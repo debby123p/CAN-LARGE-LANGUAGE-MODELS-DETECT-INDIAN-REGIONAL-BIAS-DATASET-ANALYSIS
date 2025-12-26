@@ -21,7 +21,7 @@ BATCH_SIZE = 16
 MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3" # Model ID
 
 MODEL_PROMPT = """
-You are an expert in analyzing the severity of regional biases in social media comments about Indian states and regions. You are provided with comments that have already been identified as containing regional bias. Your task is to determine the severity level of the bias present.
+You are an expert in analysing the severity of regional biases in social media comments about Indian states and regions. You are provided with comments that have already been identified as containing regional bias. Your task is to determine the severity level of the bias present.
 
 Task: Classify the severity of the regional bias in the comment as "SEVERE" (3), "MODERATE" (2), or "MILD" (1).
 
