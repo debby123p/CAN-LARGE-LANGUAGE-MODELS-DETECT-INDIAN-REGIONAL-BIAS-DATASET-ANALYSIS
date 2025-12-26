@@ -72,7 +72,7 @@ Eight prominent LLMs were selected for their instruction-following and reasoning
 
 1) Zero-Shot Results
 
-   The results for the models are presented in the zero-shot setting in the table. The codes for which are available in the folder named zero-shot-binary-classification, which is in https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/zero_shot.
+   The results for the models are presented in the zero-shot setting in the table. The codes for which are available in the folder named zero-shot-binary-classification, which is in [Link](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/zero_shot).
    
    ![image](https://github.com/debby123p/IndiRegBias-A-Benchmark-Dataset-for-Regional-Bias-Detection-in-Indian-Language-Models/blob/main/Images/Binary%20Classification%20(11).png)
 
@@ -108,9 +108,6 @@ Eight prominent LLMs were selected for their instruction-following and reasoning
 ### Results: Multi-Class Classification
 
 1) Zero-Shot Results
-
-   The zero-shot model fails to distinguish between severity levels. It heavily over-predicts “Mild” cases while missing the vast majority of “Moderate” and “Severe” instances. This can be seen by the critically low
-   F1-scores of 0.20 and 0.15, respectively. The code that is available in the folder named zero-shot-multi-class-classification, which is in https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/zero_shot.
 
    ![image](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/blob/main/Images/Screenshot%20from%202025-12-08%2015-39-15.png)
 
