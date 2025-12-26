@@ -1,206 +1,215 @@
 import os
-import re
-import argparse
-import pandas as pd
 import torch
-import matplotlib.pyplot as plt
-import seaborn as sns
+import pandas as pd
+import re
 from tqdm import tqdm
 from huggingface_hub import login
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from sklearn.metrics import classification_report, confusion_matrix
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+import matplotlib.pyplot as plt
+import seaborn as sns
+import gc
 
-MODEL_ID = "Qwen/Qwen3-8B" 
-BATCH_SIZE = 16
+HF_TOKEN = "" # Hugging_face Token
+TARGET_GPU = "0" # Target GPU node
+INPUT_CSV_PATH = "" # Dataset file path
+OUTPUT_DIR = "" # Output Directory
+COMMENT_COLUMN_NAME = "comment"
+GROUND_TRUTH_COLUMN_NAME = "severity"
+BATCH_SIZE = 16 
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-if not HF_TOKEN:
-    print("Warning: HF_TOKEN not found in environment variables. If your model is private/gated, this might fail.")
-    HF_TOKEN = "your_actual_token_here" # Hugging_face Token
-  
-if HF_TOKEN:
-    try:
-        login(token=HF_TOKEN)
-        print("Successfully logged into Hugging Face.")
-    except Exception as e:
-        print(f"Login failed: {e}")
+MODEL_ID = "Qwen/Qwen3-8B" # Model ID
 
-def get_classifier_prompt(): """
+MODEL_PROMPT = """
+You are an expert in analysing the severity of regional biases in social media comments about Indian states and regions. You are provided with comments that have already been identified as containing regional bias. Your task is to determine the severity level of the bias present.
 
-You are an expert content moderator. Your task is to analyze the following comment for regional bias and assign a severity score (1, 2, or 3).
+Task: Classify the severity of the regional bias in the comment as "SEVERE" (3), "MODERATE" (2), or "MILD" (1).
 
-**Instructions:**
-1. Analyze the comment for stereotypes, hostility, or hateful language.
-2. Determine the severity based on these definitions:
-   * **3 (Severe):** Overtly offensive, hateful, slurs, or exclusionary language.
-   * **2 (Moderate):** Clear negative generalizations or explicit stereotypes without slur usage.
-   * **1 (Mild):** Subtle bias, positive stereotypes, or non-offensive remarks.
+Definitions (Check in this order):
+- LEVEL 3 (SEVERE): Comments that are overtly hostile, hateful, or derogatory. These include usage of regional slurs, dehumanising language, calls for exclusion (e.g., "Go back to your state"), or statements that promote hatred/violence against a specific region or group.
+- LEVEL 2 (MODERATE): Comments that contain explicit negative generalisations, mockery, or clearly biased assumptions about a region's culture, language, or people. The tone is critical or mocking but does not incite violence or use extreme profanity/slurs.
+- LEVEL 1 (MILD): Comments that contain subtle stereotypes, "benevolent" or positive biases (e.g., "People from State X are always smart"), or minor negative generalisations that are not aggressive. These comments rely on low-level regional tropes without expressing hostility.
 
-**Comment:**
-"{comment_text}"
+Step-by-Step Analysis Process:
+Step 1: Analyze the Stereotype or Generalization
+Think: What specific regional claim is being made?
+- Is it a positive generalisation?
+- Is it a negative stereotype? 
 
-**Reasoning:**
-(Provide a brief thought process)
+Step 2: Assess Tone and Intent
+Evaluate the emotional weight of the words:
+- Is the tone aggressive, hateful, or threatening? (Check for Level 3 first)
+- Is the tone mocking, sarcastic, or condescending? (Check for Level 2)
+- Is the tone casual or "matter-of-fact"? (Check for Level 1)
 
-**Final Classification:**
+Step 3: Check for Escalating Factors
+Look for specific triggers:
+- For Level 3: Does it contain slurs? Does it question citizenship/belonging? Is it dehumanising?
+- For Level 2: Does it imply one group is superior to another?
+
+Step 4: Final Classification
+Based on the analysis above, assign the severity score:
+- 3: If the bias is abusive, hateful, or extreme.
+- 2: If the bias is explicit and negative, but not abusive.
+- 1: If the bias is subtle, positive, or non-hostile.
+
+Your response must include a brief line of reasoning followed by the final classification in the format "Classification: [1, 2, or 3]".
 """
 
-def parse_model_output(generated_text):
-    """
-    Extracts the integer class (1, 2, or 3) from the model's response.
-    Returns 1 (Mild) as a fallback if the model hallucinates.
-    """
-    try:
-        if "Final Classification:" in generated_text:
-            answer_part = generated_text.split("Final Classification:")[-1]
-            match = re.search(r'\d', answer_part)
-            if match:
-                val = int(match.group(0))
-                if val in [1, 2, 3]:
-                    return val
-    except Exception:
-        pass
+def setup_environment():
+    # Sets up GPU visibility and creates the output directory.
+    print(f"Restricting execution to GPU: {TARGET_GPU}")
+    os.environ["CUDA_VISIBLE_DEVICES"] = TARGET_GPU
     
-    # Fallback default
-    return 1
+    if not os.path.exists(OUTPUT_DIR):
+        print(f"Creating output directory: {OUTPUT_DIR}")
+        os.makedirs(OUTPUT_DIR)
 
-def load_inference_stack(gpu_id):
-    """
-    Loads the Model and Tokenizer.
-    """
-    device_str = f"cuda:{gpu_id}"
-    print(f"Loading {MODEL_ID} onto {device_str}...")
+def load_model_and_tokenizer():
+    # Handles authentication and loads the full model.
 
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID,
-            torch_dtype=torch.bfloat16, 
-            device_map=device_str,
-            trust_remote_code=True
-        )
-        print("Model loaded successfully.")
-        return model, tokenizer
-    except Exception as e:
-        print(f"Critical Error loading model: {e}")
-        exit(1)
+    print("Logging into Hugging Face Hub.")
+    if HF_TOKEN:
+        login(token=HF_TOKEN)
 
-
-def main(args):
-    if not torch.cuda.is_available():
-        print("Error: CUDA is missing. You really need a GPU for this.")
-        return
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-        print(f"Created output directory: {args.output_dir}")
-
-    # Load Data
-    print(f"Reading input file: {args.input_csv}")
-    try:
-        df_full = pd.read_csv(args.input_csv)
-    except FileNotFoundError:
-        print("Error: Input CSV not found.")
-        return
-
-    if 'comment' not in df_full.columns:
-        print("Error: Your CSV must have a 'comment' column.")
-        return
-
-    all_comments = df_full['comment'].astype(str).tolist()
-    total_count = len(all_comments)
-    results_path = os.path.join(args.output_dir, "classification_results_in_progress.csv")
-    start_idx = 0
-    
-    if os.path.exists(results_path):
-        try:
-            existing_df = pd.read_csv(results_path, engine='python')
-            start_idx = len(existing_df)
-            print(f"Resume file found. Picking up from row {start_idx + 1}...")
-        except pd.errors.EmptyDataError:
-            print("Progress file exists but is empty. Starting from scratch.")
-    else:
-        print("Starting a fresh inference run.")
-
-    # Initialize Pipeline
-    model, tokenizer = load_inference_stack(args.gpu_id)
-    
-    text_generator = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer
+    print(f"Loading model: {MODEL_ID} in bfloat16.")
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        device_map="auto",
+        dtype=torch.bfloat16,
+        trust_remote_code=True
     )
 
-    prompt_template = get_classifier_prompt()
-
-    print("\nStarting Batch Processing...")
-    batch_range = range(start_idx, total_count, BATCH_SIZE)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
     
-    for i in tqdm(batch_range, desc="Processing Batches"):
-        end_idx = min(i + BATCH_SIZE, total_count)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = 'left'
         
-        batch_comments = all_comments[i:end_idx]
-        batch_df_slice = df_full.iloc[i:end_idx].copy()
+    return model, tokenizer
 
+def parse_single_response(response_text):
+    # Robustly parses a single model response text to ensure a 1, 2, or 3 output.
+    prediction = -1
+    reasoning = response_text.split("Classification:")[0].strip() or response_text
+    
+    match = re.search(r'Classification:\s*([123])', response_text)
+    if match:
+        prediction = int(match.group(1))
+    else:
+        digits = re.findall(r'\b([1-3])\b', response_text.split('\n')[-1])
+        if digits:
+            prediction = int(digits[-1])
+    
+    if prediction == -1:
+        print(f"Warning: Could not parse model output. Defaulting to 1 (Mild). Response: '{response_text}'")
+        prediction = 1
         
-        formatted_prompts = [prompt_template.format(comment_text=c) for c in batch_comments]
+    return prediction, reasoning
 
-        outputs = text_generator(
-            formatted_prompts,
-            max_new_tokens=150, 
-            pad_token_id=tokenizer.eos_token_id,
-            temperature=0.1, 
-            do_sample=True
-        )
+def classify_batch(comments, model, tokenizer):
+    # Generates classifications for a batch of comments.
+    messages_batch = []
+    for comment in comments:
+        full_content = f"{MODEL_PROMPT}\n\nComment: \"{comment}\"\n\nBased on your analysis, provide your reasoning and final classification."
+        messages_batch.append([{"role": "user", "content": full_content}])
 
-        batch_preds = []
-        for idx, out in enumerate(outputs):
-            result_obj = out[0] if isinstance(out, list) else out
-            full_text = result_obj['generated_text']
-            new_text = full_text.replace(formatted_prompts[idx], '').strip()
-            
-            pred = parse_model_output(new_text)
-            batch_preds.append(pred)
-          
-        batch_df_slice['predicted_label'] = batch_preds
-        write_header = not os.path.exists(results_path) or (start_idx == 0 and i == 0)
-        
-        batch_df_slice.to_csv(results_path, mode='a', header=write_header, index=False)
-
-    print("\nInference job complete.")
-
-    # Saving the results
+    formatted_prompts = [tokenizer.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages_batch]
+    
+    inputs = tokenizer(formatted_prompts, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(model.device)
+    
+    results = []
     try:
-        final_df = pd.read_csv(results_path, engine='python')
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs, 
+                max_new_tokens=512, 
+                do_sample=True, 
+                temperature=0.1, 
+                pad_token_id=tokenizer.eos_token_id
+            )
         
-        if 'level-2' in final_df.columns:
-            print("Generating metrics report...")
-            
-            y_true = final_df['level-2'].astype(int)
-            y_pred = final_df['predicted_label'].astype(int)
-            
-            # Save text report
-            report = classification_report(y_true, y_pred, zero_division=0)
-            with open(os.path.join(args.output_dir, "classification_report.txt"), "w") as f:
-                f.write(report)
-            print(report)
-          
-            cm = confusion_matrix(y_true, y_pred)
-            plt.figure(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-            plt.savefig(os.path.join(args.output_dir, "confusion_matrix.png"))
-            print("Saved confusion matrix image.")
-            
-        else:
-            print("Info: 'level-2' column not found, skipping accuracy metrics.")
-            
+        response_texts = tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)
+
+        for text in response_texts:
+            results.append(parse_single_response(text))
+
     except Exception as e:
-        print(f"Warning: Could not generate final report: {e}")
+        print(f"An error occurred during model generation for a batch: {e}")
+        results = [(1, f"Error: {e}")] * len(comments)
+    
+    del inputs, outputs
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    return results
+
+def generate_evaluation_outputs(df):
+    # Generates and saves the classification report and confusion matrix.
+    y_true = df[GROUND_TRUTH_COLUMN_NAME].astype(int)
+    y_pred = df['predicted_label'].astype(int)
+
+    target_names = ["Mild Bias (1)", "Moderate Bias (2)", "Severe Bias (3)"]
+    labels = [1, 2, 3]
+
+    report = classification_report(y_true, y_pred, labels=labels, target_names=target_names, zero_division=0)
+    report_path = os.path.join(OUTPUT_DIR, "classification_report.txt")
+    with open(report_path, "w") as f:
+        f.write(f"Classification Report for model: {MODEL_ID}\n\n")
+        f.write(report)
+    print(f"\nClassification report saved to {report_path}")
+    print(report)
+
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=target_names, 
+                yticklabels=target_names)
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
+    plt.title(f'Confusion Matrix - {MODEL_ID}')
+    cm_path = os.path.join(OUTPUT_DIR, "confusion_matrix.png")
+    plt.savefig(cm_path)
+    print(f"Confusion matrix saved to {cm_path}")
+
+def main():
+    # Main function to orchestrate the entire classification process.
+    setup_environment()
+    model, tokenizer = load_model_and_tokenizer()
+    
+    print(f"\nReading input CSV")
+    try:
+        df = pd.read_csv(INPUT_CSV_PATH)
+    except FileNotFoundError:
+        print(f"Error: Input file not found at {INPUT_CSV_PATH}")
+        return
+
+    if COMMENT_COLUMN_NAME not in df.columns:
+        raise ValueError(f"Comment column error for '{COMMENT_COLUMN_NAME}'.")
+
+    df[COMMENT_COLUMN_NAME] = df[COMMENT_COLUMN_NAME].astype(str).fillna("")
+    comments_to_process = df[COMMENT_COLUMN_NAME].tolist()
+    
+    all_results = []
+    
+    print(f"Starting classification for {len(comments_to_process)} comments with batch size {BATCH_SIZE}.")
+    
+    for i in tqdm(range(0, len(comments_to_process), BATCH_SIZE), desc="Classifying batches"):
+        batch_comments = comments_to_process[i:i + BATCH_SIZE]
+        batch_results = classify_batch(batch_comments, model, tokenizer)
+        all_results.extend(batch_results)
+    
+    df['predicted_label'] = [res[0] for res in all_results]
+    df['model_reasoning'] = [res[1] for res in all_results]
+
+    output_csv_path = os.path.join(OUTPUT_DIR, "classification_results.csv")
+    df.to_csv(output_csv_path, index=False)
+    print(f"\nClassification complete. Results saved to {output_csv_path}")
+    
+    if GROUND_TRUTH_COLUMN_NAME in df.columns:
+        generate_evaluation_outputs(df)
+    else:
+        print(f"\nGround truth column '{GROUND_TRUTH_COLUMN_NAME}' not found. Skipping evaluation.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="AI Bias Detection: Zero-Shot Classification")
-    parser.add_argument("--input_csv", type=str, required=True, help="Pathway to dataset") # Dataset file path
-    parser.add_argument("--output_dir", type=str, default="./results", help="Results directory") # Output Directory
-    parser.add_argument("--gpu_id", type=int, default=1, help="GPU ID")
-
-    args = parser.parse_args()
-    main(args)
+    main()
