@@ -54,15 +54,21 @@ We deployed a series of experiments in the following setting with the Chain-of-t
 ### Models Evaluated
 Eight prominent LLMs were selected for their instruction-following and reasoning abilities:
 
-- Qwen/Qwen3-8B 
+- qwen/Qwen3-8B
 
-- mistralai/Mistral-7B-Instruct-v0.3 
+- qwen/qwen3-32B
+  
+- mistralai/Mistral-7B-Instruct-v0.3
+
+- mistralai/Mistral-Nemo-Base-2047
 
 - meta-llama/Llama-3.2-3B 
 
 - deepseek-ai/DeepSeek-R1-Distill-Llama-8B 
 
-- google/gemma-1.1-7b-it 
+- google/gemma-1.1-7b-it
+
+- google/gemini-2.5-pro
 
 - microsoft/Phi-4-mini-reasoning(4b) 
 
@@ -80,19 +86,19 @@ Eight prominent LLMs were selected for their instruction-following and reasoning
 
    We conducted the few-shot experiments with a smaller number of support (different combinations of regional biases and non-regional biases) on a smaller dataset of 1000 comments for the model Qwen3_8b. The codes for which are available in [qwen_3_8b](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/few-shot).
 
-   ![image](https://github.com/debby123p/IndiRegBias-A-Benchmark-Dataset-for-Regional-Bias-Detection-in-Indian-Language-Models/blob/main/Images/Binary%20Classification%20(13).png)
+   ![image](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/blob/main/Images/Binary%20Classification%20(13).png)
 
-   After looking through the inferences of the above experiment, we proceeded with experiments on the entire dataset with the type of support we have provided in Exp-2, Exp-3, and Exp-4, as we got improved performances in    comparison to the zero-shot results. The codes for which are available in the folder named Qwen_3_8b_entire_dataset, which is in https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/few-shot.
+   After looking through the inferences of the above experiment, we proceeded with experiments on the entire dataset with the type of support we have provided in Exp-2, Exp-3, and Exp-4, as we got improved performances in comparison to the zero-shot results. The codes for which are , which is available in [Few-shot-binary-classification](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/few-shot).
 
-   ![image](https://github.com/debby123p/IndiRegBias-A-Benchmark-Dataset-for-Regional-Bias-Detection-in-Indian-Language-Models/blob/main/Images/Binary%20Classification%20(14).png)
+   ![image](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/blob/main/Images/PresentationWork%20Progress%20(1)%20(1).png)
 
-   This few-shot strategy is a complete failure. In all the experiments, the Zero-Shot setting is significantly better and more balanced than the few-shot setting.
+   The few-shots results show improvement over the zero-shot results as present in the above table. The experiment with providing only 50 regional biases as support has outperformed other few-shot experiments. Also, balanced and unbalanced set of support show improvement in performance in comparison to the zero-shot.   
 
-4) Fine-Tuning Results
+5) Fine-Tuning Results
 
-   Fine-tuned Qwen emerged as the absolute best performer, achieving high reliability with F1-scores nearing 0.90 for both bias categories. Fine-tuned Mistral showed only minor improvements over its zero-shot (e.g., 0.61 to 0.65 F1), demonstrating far less adaptability to this specific task compared to Qwen. The codes for which are available in the folder named binary-classification, which is in https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/fine-tuning.
+   Fine-tuned Qwen3_32b has emerged as the absolute best performer, achieving high reliability with F1-scores and precision nearing 0.90 for both bias categories. Followed by Qwen3_8b model which has also performed better than zero-shot, achieving near 0.90 scores for precison and F1-scores. Fine-tuned Mistral showed only minor improvements over its zero-shot, demonstrating far less adaptability to this specific task compared to Qwen. The codes for which are available in [binary-classification](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/tree/main/fine-tuning).
 
-   ![image](https://github.com/debby123p/IndiRegBias-A-Benchmark-Dataset-for-Regional-Bias-Detection-in-Indian-Language-Models/blob/main/Images/Binary%20Classification%20(15).png)
+   ![image](https://github.com/debby123p/CAN-LARGE-LANGUAGE-MODELS-DETECT-INDIAN-REGIONAL-BIAS-DATASET-ANALYSIS/blob/main/Images/PresentationWork%20Progress%20(2)%20(1).png)
 
 ### Results: Multi-Class Classification
 
