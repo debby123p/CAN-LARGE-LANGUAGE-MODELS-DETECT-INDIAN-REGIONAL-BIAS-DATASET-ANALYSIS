@@ -69,7 +69,7 @@ def setup_environment():
 
 def load_model_and_tokenizer():
     # Handles authentication and loads the full model.
-    print("Logging into Hugging Face Hub...")
+    print("Logging into Hugging Face Hub.")
     login(token=HF_API_KEY)
 
     print(f"Loading model: {MODEL_ID} in full precision.")
@@ -77,7 +77,7 @@ def load_model_and_tokenizer():
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         device_map="auto",
-        torch_dtype=torch.bfloat16
+        dtype=torch.bfloat16
     )
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
