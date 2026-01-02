@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# IMPORTANT: Replace with API key 
+# Replace with API key 
 GOOGLE_API_KEY = "" 
 
 INPUT_CSV_PATH = "" # Dataset file path
@@ -66,7 +66,7 @@ def setup_environment():
         os.makedirs(OUTPUT_DIR)
 
 def configure_model():
-    # Configures the Gemini API and initializes the model.
+    # Configures the Gemini API and initialises the model.
     print("Configuring Gemini API.")
     if not GOOGLE_API_KEY:
         raise ValueError("Google API Key is not set. Please provide your key.")
