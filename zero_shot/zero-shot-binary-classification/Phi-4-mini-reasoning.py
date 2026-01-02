@@ -71,14 +71,14 @@ def setup_environment():
 def load_model_and_tokenizer():
     # Handles authentication and loads the full model.
 
-    print("Logging into Hugging Face Hub...")
+    print("Logging into Hugging Face Hub.")
     login(token=HF_API_KEY)
 
     print(f"Loading model: {MODEL_ID} in full precision.")
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         trust_remote_code=True 
     )
 
@@ -96,17 +96,12 @@ def load_model_and_tokenizer():
 def parse_single_response(response_text):
     # Robustly parses a single model response text to ensure a 0 or 1 output. 
     prediction = -1
-    
-    # Phi-4-mini-reasoning might output <think> tags. 
-    # We clean the text to extract the reasoning part before the classification.
-    # The split method below generally works even with <think> tags.
     reasoning = response_text.split("Classification:")[0].strip() or response_text
 
     match = re.search(r'Classification:\s*([01])', response_text)
     if match:
         prediction = int(match.group(1))
     else:
-        # Fallback regex if precise format is missed
         if re.search(r'REGIONAL BIAS|1', response_text, re.IGNORECASE):
             prediction = 1
         elif re.search(r'NON-REGIONAL BIAS|0', response_text, re.IGNORECASE):
@@ -119,7 +114,7 @@ def parse_single_response(response_text):
     return prediction, reasoning
 
 def classify_batch(comments, model, tokenizer):
-    # Generates classifications for a batch of comments for high throughput.
+    # Generates classifications for a batch of comments.
     
     messages = [
         [
@@ -127,8 +122,7 @@ def classify_batch(comments, model, tokenizer):
             {"role": "user", "content": f"Comment: \"{comment}\"\n\nBased on your analysis, provide your reasoning and final classification."}
         ] for comment in comments
     ]
-    
-    # Apply chat template with tokenization disabled first to get raw strings
+
     prompts = [tokenizer.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
     
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True, max_length=2048).to(model.device)
@@ -138,7 +132,7 @@ def classify_batch(comments, model, tokenizer):
         with torch.no_grad():
             outputs = model.generate(
                 **inputs, 
-                max_new_tokens=300, # Increased for reasoning models
+                max_new_tokens=150,
                 do_sample=False, 
                 pad_token_id=tokenizer.eos_token_id
             )
@@ -150,7 +144,6 @@ def classify_batch(comments, model, tokenizer):
 
     except Exception as e:
         print(f"An error occurred during model generation for a batch: {e}")
-        # Return default 0 prediction on error to keep pipeline running
         results = [(0, f"Error: {e}")] * len(comments)
     
     del inputs, outputs
