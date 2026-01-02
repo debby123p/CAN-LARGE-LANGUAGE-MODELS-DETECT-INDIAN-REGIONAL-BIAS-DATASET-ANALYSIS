@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-
+# Configuration
 CONFIG = {
     "model_id": "Qwen/Qwen3-8B", # Model ID
     "device": "cuda:1", # GPU ID
@@ -19,11 +19,10 @@ CONFIG = {
     "seed": 42
 }
 
-
 BASE_DIR = "" # Base directory to the data
 OUTPUT_DIR = "" # Output directory
 
-# Few-shot example
+# Few-shot example sources
 FEW_SHOT_SOURCES = [
     os.path.join(BASE_DIR, ""),
     os.path.join(BASE_DIR, "")
@@ -38,7 +37,6 @@ INFERENCE_FILES = [
 RESULTS_CSV = os.path.join(OUTPUT_DIR, "classification_results.csv")
 REPORT_FILE = os.path.join(OUTPUT_DIR, "classification_report.txt")
 MATRIX_IMG = os.path.join(OUTPUT_DIR, "confusion_matrix.png")
-
 
 SYSTEM_PROMPT = """
 You are an expert in identifying regional biases in social media comments about Indian states and regions. Your task is to classify whether a comment contains regional biases or not.
@@ -83,19 +81,15 @@ Format: "Reasoning: [text] ... Classification: [0 or 1]"
 """
 
 def setup_model(model_id, target_device):
-    """Load 4-bit quantised model and tokenizer."""
-    print(f"Loading 4-bit quantized model: {model_id}...")
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16
-    )
-  
+    # Load full precision model and tokenizer.
+    print(f"Loading full precision model: {model_id}...")
+    
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        quantization_config=bnb_config,
         device_map=target_device,
-        trust_remote_code=True
+        trust_remote_code=True,
+        dtype=torch.bfloat16 
     )
     
     tokenizer.padding_side = 'left'
@@ -105,8 +99,8 @@ def setup_model(model_id, target_device):
     return model, tokenizer
 
 def compile_all_few_shot_examples(file_paths):
-    """Aggregates examples from CSV files."""
-    print("Compiling few-shot prompt from all provided files...")
+    # Aggregates examples from CSV files.
+    print("Compiling few-shot prompt from all provided files.")
     df_list = []
     
     for fpath in file_paths:
@@ -127,13 +121,11 @@ def compile_all_few_shot_examples(file_paths):
     if not df_list:
         sys.exit("Error: No valid few-shot examples loaded.")
 
-    
     df_combined = pd.concat(df_list, ignore_index=True)
     initial_count = len(df_combined)
     df_combined.drop_duplicates(subset=['comment'], inplace=True, keep='first')
     print(f"Consolidated {initial_count} examples into {len(df_combined)} unique examples.")
 
-    
     formatted_prompt = ""
     used_comments = set()
     
@@ -148,17 +140,20 @@ def compile_all_few_shot_examples(file_paths):
     return formatted_prompt, used_comments
 
 def extract_classification(response_text):
-    """Parse reasoning and label from model output."""
+    # Parse reasoning and label from model output.
+    
+    # Extract Classification
     match = re.search(r"Classification:\s*([01])", response_text, re.IGNORECASE)
     prediction = int(match.group(1)) if match else -1
-    
+
+    # Extract Reasoning
     reason_match = re.search(r"Reasoning:(.*?)(?=Classification:)", response_text, re.IGNORECASE | re.DOTALL)
     reasoning = reason_match.group(1).strip() if reason_match else "N/A"
     
     return reasoning, prediction
 
 def generate_metrics(df):
-    """Save classification report and confusion matrix."""
+    # Save classification report and confusion matrix.
     valid_df = df[df['predicted_label'] != -1]
     
     if valid_df.empty:
@@ -190,7 +185,6 @@ def main():
     
     # Load resources
     model, tokenizer = setup_model(CONFIG["model_id"], CONFIG["device"])
-  
     few_shot_prompt, exclude_comments = compile_all_few_shot_examples(FEW_SHOT_SOURCES)
     
     # Load Inference Data
@@ -208,7 +202,7 @@ def main():
         
     df_full = pd.concat(df_list, ignore_index=True)
     
-    
+    # Sampling logic
     if len(df_full) > CONFIG["inference_sample_size"]:
         print(f"Dataset too large ({len(df_full)}). Sampling {CONFIG['inference_sample_size']} random entries.")
         df_full = df_full.sample(n=CONFIG["inference_sample_size"], random_state=CONFIG["seed"])
@@ -240,6 +234,7 @@ def main():
                 truncation=True, 
                 max_length=CONFIG["context_window"]
             ).to(device)
+            
             prompt_len = inputs.input_ids.shape[1]
             max_new = max(100, CONFIG["context_window"] - prompt_len - 10)
 
